@@ -24,8 +24,8 @@
 	</licenses>
 
 	<scm>
-		<connection>git://github.com/3pillarlabs/quartz-simpledb-jobstore.git</connection>
-		<developerConnection>git@github.com:3pillarlabs/quartz-simpledb-jobstore.git</developerConnection>
+		<connection>scm:git:git://github.com/3pillarlabs/quartz-simpledb-jobstore.git</connection>
+		<developerConnection>scm:git:git@github.com:3pillarlabs/quartz-simpledb-jobstore.git</developerConnection>
 		<tag>releases/${project.version}</tag>
 		<url>https://github.com/3pillarlabs/quartz-simpledb-jobstore</url>
 	</scm>
