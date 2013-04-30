@@ -29,16 +29,16 @@ The job store is configured in standard Quartz fashion by setting a Java `Proper
     properties.setProperty("org.quartz.jobStore.awsSecretKey", awsSecretKey);
 ```
 
-### Specifying a SimpleDB domain Prefix
+### Modify SimpleDB domain prefix
 
-By default, the jobstore will create 2 domains: "quartz.Jobs" and "quartz.Triggers", where `quartz` is the prefix. You can this prefix by setting a property:
+By default, the jobstore will create 2 domains: "quartz.Jobs" and "quartz.Triggers", where `quartz` is the prefix. You can modify this prefix by setting a property:
 
 ```java
     String somePrefix = "yada";
     properties.setProperty("org.quartz.jobStore.prefix", somePrefix);
 ```
 
-### Recreating domains on scheduler startup
+### Recreate domains on scheduler startup
 
 Mostly useful for testing, this property will re-create the `Jobs` and `Triggers` domains everytime the Quartz scheduler is started.
 
