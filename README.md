@@ -11,7 +11,7 @@ The project artifacts are available from Maven Central. The dependency informati
     <dependency>
         <groupId>com.3pillarglobal.labs</groupId>
         <artifactId>quartz-simpledb-jobstore</artifactId>
-        <version>0.0.1</version>
+        <version>1.0</version>
     </dependency>
 
 Configuration
