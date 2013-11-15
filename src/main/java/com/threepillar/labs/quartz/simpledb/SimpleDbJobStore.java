@@ -57,6 +57,8 @@ import com.amazonaws.services.simpledb.model.DeleteDomainRequest;
 import com.amazonaws.services.simpledb.model.GetAttributesRequest;
 import com.amazonaws.services.simpledb.model.GetAttributesResult;
 import com.amazonaws.services.simpledb.model.Item;
+import com.amazonaws.services.simpledb.model.ListDomainsRequest;
+import com.amazonaws.services.simpledb.model.ListDomainsResult;
 import com.amazonaws.services.simpledb.model.PutAttributesRequest;
 import com.amazonaws.services.simpledb.model.ReplaceableAttribute;
 import com.amazonaws.services.simpledb.model.ReplaceableItem;
@@ -118,8 +120,8 @@ public class SimpleDbJobStore implements JobStore {
 	 * 
 	 * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 	 */
-	private static final String JOB_DOMAIN = "Jobs";
-	private static final String TRIGGER_DOMAIN = "Triggers";
+	protected static final String JOB_DOMAIN = "quartzJobs";
+	protected static final String TRIGGER_DOMAIN = "quartzTriggers";
 	private static final int MAX_ATTR_LENGTH = 1024;
 
 	/*
@@ -216,7 +218,8 @@ public class SimpleDbJobStore implements JobStore {
 	@Override
 	public void initialize(ClassLoadHelper loadHelper,
 			SchedulerSignaler signaler) {
-		log.debug("Initializing SimpleDbJobStore");
+
+		logDebug("Initializing SimpleDbJobStore");
 		this.jobDomain = String.format("%s.%s", prefix,
 				SimpleDbJobStore.JOB_DOMAIN);
 		this.triggerDomain = String.format("%s.%s", prefix,
@@ -227,7 +230,8 @@ public class SimpleDbJobStore implements JobStore {
 		this.signaler = signaler;
 
 		boolean foundJobs = false, foundTriggers = false;
-		for (String name : amazonSimpleDb.listDomains().getDomainNames()) {
+		List<String> domainNames = getSimpleDbDomainNames();
+		for (String name : domainNames) {
 			if (name.equals(jobDomain)) {
 				if (recreate) {
 					amazonSimpleDb.deleteDomain(new DeleteDomainRequest(
@@ -257,6 +261,20 @@ public class SimpleDbJobStore implements JobStore {
 		log.info("SimpleDbJobStore initialized.");
 	}
 
+	private List<String> getSimpleDbDomainNames() {
+
+		ListDomainsResult result = amazonSimpleDb.listDomains();
+		List<String> names = result.getDomainNames();
+		String nextToken = result.getNextToken();
+		while (nextToken != null && !nextToken.isEmpty()) {
+			result = amazonSimpleDb.listDomains(new ListDomainsRequest()
+					.withNextToken(nextToken));
+			names.addAll(result.getDomainNames());
+			nextToken = result.getNextToken();
+		}
+		return names;
+	}
+
 	@Override
 	public void schedulerStarted() throws SchedulerException {
 		// nothing to do
@@ -276,7 +294,7 @@ public class SimpleDbJobStore implements JobStore {
 	public void setMisfireThreshold(long misfireThreshold) {
 		if (misfireThreshold < 1) {
 			throw new IllegalArgumentException(
-					"Misfirethreashold must be larger than 0");
+					"'misfireThreshold' must be >= 1");
 		}
 		this.misfireThreshold = misfireThreshold;
 	}
@@ -290,6 +308,7 @@ public class SimpleDbJobStore implements JobStore {
 	 */
 	@Override
 	public void shutdown() {
+		this.amazonSimpleDb.shutdown();
 	}
 
 	@Override
@@ -337,7 +356,7 @@ public class SimpleDbJobStore implements JobStore {
 	public void storeJob(SchedulingContext ctxt, JobDetail newJob,
 			boolean replaceExisting) throws ObjectAlreadyExistsException {
 
-		log.debug("Storing Job: " + newJob.getFullName());
+		logDebug("Storing Job: ", newJob.getFullName());
 		ReplaceableItem item = null;
 		try {
 			List<ReplaceableAttribute> attributes = new ArrayList<ReplaceableAttribute>();
@@ -380,7 +399,7 @@ public class SimpleDbJobStore implements JobStore {
 	@Override
 	public boolean removeJob(SchedulingContext ctxt, String jobName,
 			String groupName) {
-		log.debug("Removing Job: " + groupName + "." + jobName);
+		logDebug("Removing Job: ", groupName, ".", jobName);
 		try {
 			String key = JobWrapper.getJobNameKey(jobName, groupName);
 			amazonSimpleDb.deleteAttributes(new DeleteAttributesRequest(
@@ -413,7 +432,7 @@ public class SimpleDbJobStore implements JobStore {
 	public void storeTrigger(SchedulingContext ctxt, Trigger newTrigger,
 			boolean replaceExisting) throws JobPersistenceException {
 
-		log.debug("Storing Trigger: " + newTrigger.getFullName());
+		logDebug("Storing Trigger: ", newTrigger.getFullName());
 		ReplaceableItem item = null;
 		try {
 
@@ -489,7 +508,7 @@ public class SimpleDbJobStore implements JobStore {
 
 	private boolean removeTrigger(SchedulingContext ctxt, String triggerName,
 			String groupName, boolean removeOrphanedJob) {
-		log.debug("Removing Trigger: " + groupName + "." + triggerName);
+		logDebug("Removing Trigger: ", groupName, ".", triggerName);
 		try {
 			String key = TriggerWrapper.getTriggerNameKey(triggerName,
 					groupName);
@@ -511,8 +530,8 @@ public class SimpleDbJobStore implements JobStore {
 	public boolean replaceTrigger(SchedulingContext ctxt, String triggerName,
 			String groupName, Trigger newTrigger)
 			throws JobPersistenceException {
-		log.debug("Replacing Trigger: " + triggerName + "." + groupName
-				+ " with " + newTrigger.getFullName());
+		logDebug("Replacing Trigger: ", triggerName, ".", groupName, " with ",
+				newTrigger.getFullName());
 		Trigger found = retrieveTrigger(ctxt, triggerName, groupName);
 
 		if (found != null) {
@@ -549,7 +568,7 @@ public class SimpleDbJobStore implements JobStore {
 	@Override
 	public JobDetail retrieveJob(SchedulingContext ctxt, String jobName,
 			String groupName) {
-		log.debug("Retrieving Job: " + groupName + "." + jobName);
+		logDebug("Retrieving Job: ", groupName, ".", jobName);
 		String key = JobWrapper.getJobNameKey(jobName, groupName);
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(jobDomain, key)
@@ -597,7 +616,7 @@ public class SimpleDbJobStore implements JobStore {
 	@Override
 	public Trigger retrieveTrigger(SchedulingContext ctxt, String triggerName,
 			String groupName) {
-		log.debug("Retrieving Trigger: " + triggerName + "." + groupName);
+		logDebug("Retrieving Trigger: ", triggerName, ".", groupName);
 		String key = TriggerWrapper.getTriggerNameKey(triggerName, groupName);
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(triggerDomain, key)
@@ -607,8 +626,7 @@ public class SimpleDbJobStore implements JobStore {
 			tw = triggerFromAttributes(result.getAttributes());
 			return tw.trigger;
 		} catch (Exception e) {
-			log.error("Could not retrieve Trigger: " + triggerName + "."
-					+ groupName, e);
+			logDebug("Trigger not found: ", triggerName, ".", groupName);
 		}
 		return null;
 	}
@@ -656,7 +674,7 @@ public class SimpleDbJobStore implements JobStore {
 	}
 
 	private void updateState(TriggerWrapper tw) {
-		log.debug("Updating state of Trigger: " + tw.trigger.getFullName());
+		logDebug("Updating state of Trigger: ", tw.trigger.getFullName());
 		String key = TriggerWrapper.getTriggerNameKey(tw.trigger);
 		ReplaceableAttribute attr = new ReplaceableAttribute(TRIGGER_STATE,
 				String.valueOf(tw.state), true);
@@ -679,7 +697,7 @@ public class SimpleDbJobStore implements JobStore {
 	@Override
 	public int getTriggerState(SchedulingContext ctxt, String triggerName,
 			String groupName) throws JobPersistenceException {
-		log.debug("Finding state of Trigger: " + triggerName + "." + groupName);
+		logDebug("Finding state of Trigger: ", triggerName, ".", groupName);
 		String key = TriggerWrapper.getTriggerNameKey(triggerName, groupName);
 
 		TriggerWrapper tw = null;
@@ -788,7 +806,7 @@ public class SimpleDbJobStore implements JobStore {
 	 */
 	@Override
 	public int getNumberOfJobs(SchedulingContext ctxt) {
-		log.debug("Finding number of jobs");
+		logDebug("Finding number of jobs");
 		try {
 			SelectResult result = amazonSimpleDb.select(new SelectRequest(query
 					.countJobs()));
@@ -808,7 +826,7 @@ public class SimpleDbJobStore implements JobStore {
 	 */
 	@Override
 	public int getNumberOfTriggers(SchedulingContext ctxt) {
-		log.debug("Finding number of triggers");
+		logDebug("Finding number of triggers");
 		try {
 			SelectResult result = amazonSimpleDb.select(new SelectRequest(query
 					.countTriggers()));
@@ -839,7 +857,7 @@ public class SimpleDbJobStore implements JobStore {
 	 */
 	@Override
 	public String[] getJobNames(SchedulingContext ctxt, String groupName) {
-		log.debug("Getting names of jobs");
+		logDebug("Getting names of jobs");
 		SelectResult result = amazonSimpleDb.select(new SelectRequest(query
 				.jobNamesInGroup(groupName)));
 		List<Item> jobs = result.getItems();
@@ -875,7 +893,7 @@ public class SimpleDbJobStore implements JobStore {
 	 */
 	@Override
 	public String[] getTriggerNames(SchedulingContext ctxt, String groupName) {
-		log.debug("Getting names of triggers");
+		logDebug("Getting names of triggers");
 		SelectResult result = amazonSimpleDb.select(new SelectRequest(query
 				.triggerNamesInGroup(groupName)));
 		List<Item> jobs = result.getItems();
@@ -895,7 +913,7 @@ public class SimpleDbJobStore implements JobStore {
 	 */
 	@Override
 	public String[] getJobGroupNames(SchedulingContext ctxt) {
-		log.debug("Getting job group names");
+		logDebug("Getting job group names");
 		SelectResult result = amazonSimpleDb.select(new SelectRequest(query
 				.jobGroups()));
 		List<Item> jobs = result.getItems();
@@ -916,7 +934,7 @@ public class SimpleDbJobStore implements JobStore {
 	 */
 	@Override
 	public String[] getTriggerGroupNames(SchedulingContext ctxt) {
-		log.debug("Getting trigger group names");
+		logDebug("Getting trigger group names");
 		SelectResult result = amazonSimpleDb.select(new SelectRequest(query
 				.triggerGroups()));
 		List<Item> jobs = result.getItems();
@@ -940,7 +958,7 @@ public class SimpleDbJobStore implements JobStore {
 	@Override
 	public Trigger[] getTriggersForJob(SchedulingContext ctxt, String jobName,
 			String groupName) {
-		log.debug("Get triggers for Job: " + jobName + "." + groupName);
+		logDebug("Get triggers for Job: " + jobName + "." + groupName);
 		SelectResult result = amazonSimpleDb.select(new SelectRequest(query
 				.triggersForJob(jobName, groupName)));
 		List<Item> items = result.getItems();
@@ -967,7 +985,7 @@ public class SimpleDbJobStore implements JobStore {
 	@Override
 	public void pauseTrigger(SchedulingContext ctxt, String triggerName,
 			String groupName) {
-		log.debug("Pausing Trigger: " + triggerName + "." + groupName);
+		logDebug("Pausing Trigger: ", triggerName, ".", groupName);
 		String key = TriggerWrapper.getTriggerNameKey(triggerName, groupName);
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(triggerDomain, key)
@@ -1014,7 +1032,7 @@ public class SimpleDbJobStore implements JobStore {
 	 */
 	@Override
 	public void pauseTriggerGroup(SchedulingContext ctxt, String groupName) {
-		log.debug("Pausing all triggers of goup: " + groupName);
+		logDebug("Pausing all triggers of goup: ", groupName);
 		String[] names = getTriggerNames(ctxt, groupName);
 
 		for (int i = 0; i < names.length; i++) {
@@ -1032,7 +1050,7 @@ public class SimpleDbJobStore implements JobStore {
 	@Override
 	public void pauseJob(SchedulingContext ctxt, String jobName,
 			String groupName) {
-		log.debug("Pausing all triggers of Job: " + jobName + "." + groupName);
+		logDebug("Pausing all triggers of Job: ", jobName, ".", groupName);
 		Trigger[] triggers = getTriggersForJob(ctxt, jobName, groupName);
 		for (int j = 0; j < triggers.length; j++) {
 			pauseTrigger(ctxt, triggers[j].getName(), triggers[j].getGroup());
@@ -1054,7 +1072,7 @@ public class SimpleDbJobStore implements JobStore {
 	 */
 	@Override
 	public void pauseJobGroup(SchedulingContext ctxt, String groupName) {
-		log.debug("Pausing all jobs of group: " + groupName);
+		logDebug("Pausing all jobs of group: ", groupName);
 		String[] jobNames = getJobNames(ctxt, groupName);
 		for (int i = 0; i < jobNames.length; i++) {
 			Trigger[] triggers = getTriggersForJob(ctxt, jobNames[i], groupName);
@@ -1079,7 +1097,7 @@ public class SimpleDbJobStore implements JobStore {
 	@Override
 	public void resumeTrigger(SchedulingContext ctxt, String triggerName,
 			String groupName) {
-		log.debug("Resuming Trigger: " + triggerName + "." + groupName);
+		logDebug("Resuming Trigger: ", triggerName, ".", groupName);
 		String key = TriggerWrapper.getTriggerNameKey(triggerName, groupName);
 
 		GetAttributesResult result = amazonSimpleDb
@@ -1121,7 +1139,7 @@ public class SimpleDbJobStore implements JobStore {
 	 */
 	@Override
 	public void resumeTriggerGroup(SchedulingContext ctxt, String groupName) {
-		log.debug("Resuming all triggers of group: " + groupName);
+		logDebug("Resuming all triggers of group: ", groupName);
 		String[] names = getTriggerNames(ctxt, groupName);
 		for (int i = 0; i < names.length; i++) {
 			resumeTrigger(ctxt, names[i], groupName);
@@ -1144,7 +1162,7 @@ public class SimpleDbJobStore implements JobStore {
 	@Override
 	public void resumeJob(SchedulingContext ctxt, String jobName,
 			String groupName) {
-		log.debug("Resuming all triggers for Job: " + jobName + "." + groupName);
+		logDebug("Resuming all triggers for Job: ", jobName, ".", groupName);
 		Trigger[] triggers = getTriggersForJob(ctxt, jobName, groupName);
 		for (int j = 0; j < triggers.length; j++) {
 			resumeTrigger(ctxt, triggers[j].getName(), triggers[j].getGroup());
@@ -1166,7 +1184,7 @@ public class SimpleDbJobStore implements JobStore {
 	 */
 	@Override
 	public void resumeJobGroup(SchedulingContext ctxt, String groupName) {
-		log.debug("Resuming all jobs of group: " + groupName);
+		logDebug("Resuming all jobs of group: ", groupName);
 		String[] jobNames = getJobNames(ctxt, groupName);
 
 		for (int i = 0; i < jobNames.length; i++) {
@@ -1194,7 +1212,7 @@ public class SimpleDbJobStore implements JobStore {
 	 */
 	@Override
 	public void pauseAll(SchedulingContext ctxt) {
-		log.debug("Pausing all triggers");
+		logDebug("Pausing all triggers");
 		String[] names = getTriggerGroupNames(ctxt);
 		for (int i = 0; i < names.length; i++) {
 			pauseTriggerGroup(ctxt, names[i]);
@@ -1216,7 +1234,7 @@ public class SimpleDbJobStore implements JobStore {
 	 */
 	@Override
 	public void resumeAll(SchedulingContext ctxt) {
-		log.debug("Resuming all triggers");
+		logDebug("Resuming all triggers");
 		String[] names = getTriggerGroupNames(ctxt);
 		for (int i = 0; i < names.length; i++) {
 			resumeTriggerGroup(ctxt, names[i]);
@@ -1224,7 +1242,7 @@ public class SimpleDbJobStore implements JobStore {
 	}
 
 	protected boolean applyMisfire(TriggerWrapper tw) {
-		log.debug("Applying misfire on Trigger: " + tw.trigger.getFullName());
+		logDebug("Applying misfire on Trigger: ", tw.trigger.getFullName());
 
 		long misfireTime = System.currentTimeMillis();
 		if (getMisfireThreshold() > 0) {
@@ -1283,7 +1301,7 @@ public class SimpleDbJobStore implements JobStore {
 			try {
 				TriggerWrapper tw = triggerFromAttributes(items.get(0)
 						.getAttributes());
-				log.debug("Acquired next Trigger: " + tw.trigger.getFullName());
+				logDebug("Acquired next Trigger: ", tw.trigger.getFullName());
 				if (tw.trigger.getNextFireTime() != null) {
 					tw.state = TriggerWrapper.STATE_ACQUIRED;
 					updateState(tw);
@@ -1308,7 +1326,7 @@ public class SimpleDbJobStore implements JobStore {
 	 */
 	@Override
 	public void releaseAcquiredTrigger(SchedulingContext ctxt, Trigger trigger) {
-		log.debug("Releasing Trigger: " + trigger.getFullName());
+		logDebug("Releasing Trigger: ", trigger.getFullName());
 		String key = TriggerWrapper.getTriggerNameKey(trigger);
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(triggerDomain, key)
@@ -1336,7 +1354,7 @@ public class SimpleDbJobStore implements JobStore {
 	public TriggerFiredBundle triggerFired(SchedulingContext ctxt,
 			Trigger trigger) {
 
-		log.debug("Fired Trigger: " + trigger.getFullName());
+		logDebug("Fired Trigger: ", trigger.getFullName());
 		String key = TriggerWrapper.getTriggerNameKey(trigger);
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(triggerDomain, key)
@@ -1402,7 +1420,7 @@ public class SimpleDbJobStore implements JobStore {
 	@Override
 	public void triggeredJobComplete(SchedulingContext ctxt, Trigger trigger,
 			JobDetail jobDetail, int triggerInstCode) {
-		log.debug("Completing Job: " + trigger.getFullName());
+		logDebug("Completing Job: ", trigger.getFullName());
 
 		String jobKey = JobWrapper.getJobNameKey(jobDetail.getName(),
 				jobDetail.getGroup());
@@ -1481,8 +1499,8 @@ public class SimpleDbJobStore implements JobStore {
 
 	protected void setAllTriggersOfJobToState(String jobName, String jobGroup,
 			int state) {
-		log.debug("Setting state of all triggers of Job: " + jobName + "."
-				+ jobGroup);
+		logDebug("Setting state of all triggers of Job: ", jobName, ".",
+				jobGroup);
 		Trigger[] triggers = getTriggersForJob(null, jobName, jobGroup);
 		for (int i = 0; i < triggers.length; i++) {
 			TriggerWrapper tw = new TriggerWrapper(triggers[i]);
@@ -1522,6 +1540,16 @@ public class SimpleDbJobStore implements JobStore {
 	@Override
 	public boolean isClustered() {
 		return false;
+	}
+
+	private void logDebug(Object... args) {
+		if (log.isDebugEnabled()) {
+			StringBuilder buffer = new StringBuilder(256);
+			for (Object object : args) {
+				buffer.append(object.toString());
+			}
+			log.debug(buffer.toString());
+		}
 	}
 
 }
@@ -1654,4 +1682,5 @@ class TriggerWrapper {
 	public Trigger getTrigger() {
 		return this.trigger;
 	}
+
 }

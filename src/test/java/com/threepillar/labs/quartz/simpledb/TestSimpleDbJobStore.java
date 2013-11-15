@@ -48,8 +48,8 @@ public class TestSimpleDbJobStore {
 		p.load(getClass().getResourceAsStream("/simpledb_test.properties"));
 		awsAccessKey = p.getProperty("awsAccessKey");
 		awsSecretKey = p.getProperty("awsSecretKey");
-		prefix = String.format("%SimpleDB", System.getenv("user.name"));
-		jobDomain = String.format("%s.Jobs", prefix);
+		prefix = String.format("%sSimpleDB", System.getProperty("user.name"));
+		jobDomain = String.format("%s.%s", prefix, SimpleDbJobStore.JOB_DOMAIN);
 
 		this.mapper = new ObjectMapper();
 		this.mapper.getDeserializationConfig().addMixInAnnotations(
@@ -100,8 +100,7 @@ public class TestSimpleDbJobStore {
 		quartzProperties.setProperty("org.quartz.jobStore.awsSecretKey",
 				awsSecretKey);
 		quartzProperties.setProperty("org.quartz.jobStore.prefix", prefix);
-		quartzProperties
-				.setProperty("org.quartz.jobStore.recreate", "true");
+		quartzProperties.setProperty("org.quartz.jobStore.recreate", "true");
 		StdSchedulerFactory sf = new StdSchedulerFactory();
 		sf.initialize(quartzProperties);
 
@@ -121,8 +120,7 @@ public class TestSimpleDbJobStore {
 		for (Attribute attr : attributes) {
 			map.put(attr.getName(), attr.getValue());
 		}
-		if (map.get("name") == null
-				|| !job.getName().equals(map.get("name"))) {
+		if (map.get("name") == null || !job.getName().equals(map.get("name"))) {
 			fail("Error occurred during execution. Unable to retrieve the job.");
 		}
 		scheduler.deleteJob(job.getName(), job.getGroup());
