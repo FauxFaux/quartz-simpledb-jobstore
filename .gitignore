@@ -4,3 +4,5 @@ target/
 .project
 simpledb_test.properties
 
+.idea
+*.iml
