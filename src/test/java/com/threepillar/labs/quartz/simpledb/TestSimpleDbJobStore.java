@@ -2,12 +2,16 @@ package com.threepillar.labs.quartz.simpledb;
 
 import static org.junit.Assert.*;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.junit.Before;
 import org.junit.Test;
@@ -20,7 +24,6 @@ import org.quartz.Scheduler;
 import org.quartz.Trigger;
 import org.quartz.impl.StdSchedulerFactory;
 
-import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.services.simpledb.AmazonSimpleDBClient;
 import com.amazonaws.services.simpledb.model.Attribute;
 import com.amazonaws.services.simpledb.model.GetAttributesRequest;
@@ -28,6 +31,8 @@ import com.amazonaws.services.simpledb.model.GetAttributesResult;
 
 @RunWith(JUnit4.class)
 public class TestSimpleDbJobStore {
+
+	private static final Log log = LogFactory.getLog(TestSimpleDbJobStore.class);
 
 	private static final String TEST_CRON_EXPR = "0 0/5 * * * ?";
 
@@ -41,13 +46,24 @@ public class TestSimpleDbJobStore {
 	private static String awsSecretKey;
 	private static String jobDomain;
 
+	private void readCredentialsIfAvailable() throws IOException {
+		Properties p = new Properties();
+		final InputStream resource = getClass().getResourceAsStream("/simpledb_test.properties");
+		if (null == resource) {
+			log.warn("provide a simpledb_test.properties if you want explicit credentials");
+			awsAccessKey = "";
+			awsSecretKey = "";
+			return;
+		}
+		p.load(resource);
+		awsAccessKey = p.getProperty("awsAccessKey");
+		awsSecretKey = p.getProperty("awsSecretKey");
+	}
+
 	@Before
 	public void setUp() throws Exception {
 		// simpleDB configuration
-		Properties p = new Properties();
-		p.load(getClass().getResourceAsStream("/simpledb_test.properties"));
-		awsAccessKey = p.getProperty("awsAccessKey");
-		awsSecretKey = p.getProperty("awsSecretKey");
+		readCredentialsIfAvailable();
 		prefix = String.format("%sSimpleDB", System.getProperty("user.name"));
 		jobDomain = String.format("%s.%s", prefix, SimpleDbJobStore.JOB_DOMAIN);
 
@@ -85,8 +101,7 @@ public class TestSimpleDbJobStore {
 	@Test
 	public void testRemoveJob() throws Exception {
 
-		AmazonSimpleDBClient amazonSimpleDb = new AmazonSimpleDBClient(
-				new BasicAWSCredentials(awsAccessKey, awsSecretKey));
+		AmazonSimpleDBClient amazonSimpleDb = SimpleDbJobStore.makeSimpleDbClient(awsAccessKey, awsSecretKey);
 		Properties quartzProperties = new Properties();
 		quartzProperties.setProperty("org.quartz.scheduler.instanceName",
 				"testScheduler");
