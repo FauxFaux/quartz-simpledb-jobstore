@@ -154,7 +154,7 @@ public class SimpleDbJobStore implements JobStore {
 	protected final Object lock = new Object();
 	protected long misfireThreshold = 5000l;
 	protected SchedulerSignaler signaler;
-	private final Log log = LogFactory.getLog(getClass());
+	private static final Log log = LogFactory.getLog(SimpleDbJobStore.class);
 
 	/*
 	 * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -225,8 +225,7 @@ public class SimpleDbJobStore implements JobStore {
 		this.triggerDomain = String.format("%s.%s", prefix,
 				SimpleDbJobStore.TRIGGER_DOMAIN);
 		this.query = new QueryBuilder(this.jobDomain, this.triggerDomain);
-		this.amazonSimpleDb = new AmazonSimpleDBClient(new BasicAWSCredentials(
-				awsAccessKey, awsSecretKey));
+		this.amazonSimpleDb = makeSimpleDbClient(awsAccessKey, awsSecretKey);
 		this.signaler = signaler;
 
 		boolean foundJobs = false, foundTriggers = false;
@@ -259,6 +258,20 @@ public class SimpleDbJobStore implements JobStore {
 			amazonSimpleDb.createDomain(new CreateDomainRequest(triggerDomain));
 		}
 		log.info("SimpleDbJobStore initialized.");
+	}
+
+	static AmazonSimpleDBClient makeSimpleDbClient(String accessKey, String secretKey) {
+		if (!isNullOrEmpty(accessKey) || !isNullOrEmpty(secretKey)) {
+			return new AmazonSimpleDBClient(new BasicAWSCredentials(
+					accessKey, secretKey));
+		} else {
+			logDebug("allowing AWS tools to locate authentication credentials, as you didn't provide them");
+			return new AmazonSimpleDBClient();
+		}
+	}
+
+	private static boolean isNullOrEmpty(String str) {
+		return str == null || str.isEmpty();
 	}
 
 	private List<String> getSimpleDbDomainNames() {
@@ -1542,7 +1555,7 @@ public class SimpleDbJobStore implements JobStore {
 		return false;
 	}
 
-	private void logDebug(Object... args) {
+	private static void logDebug(Object... args) {
 		if (log.isDebugEnabled()) {
 			StringBuilder buffer = new StringBuilder(256);
 			for (Object object : args) {
