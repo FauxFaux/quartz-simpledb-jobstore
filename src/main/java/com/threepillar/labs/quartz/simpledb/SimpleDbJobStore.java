@@ -465,8 +465,6 @@ public class SimpleDbJobStore implements JobStore {
 				attributes.add(new ReplaceableAttribute(TRIGGER_NEXT_FIRE_TIME,
 						dateFormat.format(newTrigger.getNextFireTime()), true));
 			}
-			item = new ReplaceableItem(
-					TriggerWrapper.getTriggerNameKey(newTrigger), attributes);
 			String json = mapper.writeValueAsString(newTrigger);
 			attributes.add(new ReplaceableAttribute(TRIGGER_JSON_LENGTH, String
 					.valueOf(json.length()), true));
@@ -479,6 +477,8 @@ public class SimpleDbJobStore implements JobStore {
 						+ String.valueOf(i), json.substring(
 						i * MAX_ATTR_LENGTH, end), true));
 			}
+            item = new ReplaceableItem(
+                    TriggerWrapper.getTriggerNameKey(newTrigger), attributes);
 			amazonSimpleDb.batchPutAttributes(new BatchPutAttributesRequest(
 					triggerDomain, Collections.singletonList(item)));
 		} catch (Exception e) {
