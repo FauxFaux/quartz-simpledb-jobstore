@@ -136,6 +136,7 @@ public class SimpleDbJobStore implements JobStore {
 	private String awsSecretKey;
 	private String prefix;
 	private boolean recreate;
+	private boolean consistentPoll;
 
 	/*
 	 * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -207,6 +208,19 @@ public class SimpleDbJobStore implements JobStore {
 
 	public void setRecreate(boolean recreate) {
 		this.recreate = recreate;
+	}
+
+	public boolean isConsistentPoll() {
+		return consistentPoll;
+	}
+
+	/** Use consistent read for polling for jobs?
+	 * Pros: Triggers can fire immediately after you add them, saving you waiting for a ~30s idle timeout in Quartz.
+	 * Cons: Lower performance overall.
+	 * Default: false
+	 */
+	public void setConsistentPoll(boolean consistentPoll) {
+		this.consistentPoll = consistentPoll;
 	}
 
 	/**
@@ -1307,7 +1321,7 @@ public class SimpleDbJobStore implements JobStore {
 		log.info("Acquiring next trigger: "
 				+ query.acquireTrigger(dateFormat.format(new Date(noLaterThan))));
 		SelectResult result = amazonSimpleDb.select(new SelectRequest(query
-				.acquireTrigger(dateFormat.format(new Date(noLaterThan)))));
+				.acquireTrigger(dateFormat.format(new Date(noLaterThan))), isConsistentPoll()));
 		List<Item> items = result.getItems();
 
 		if (items.size() == 1) {
