@@ -17,6 +17,8 @@ package com.threepillar.labs.quartz.simpledb;
  * 
  */
 
+import java.io.IOException;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -402,12 +404,12 @@ public class SimpleDbJobStore implements JobStore {
 			item = new ReplaceableItem(JobWrapper.getJobNameKey(newJob),
 					attributes);
 			amazonSimpleDb.batchPutAttributes(new BatchPutAttributesRequest(
-					jobDomain, Collections.singletonList(item)));
-		} catch (Exception e) {
+                    jobDomain, Collections.singletonList(item)));
+		} catch (IOException e) {
 			log.error("Could not store Job: " + newJob.getFullName(), e);
-		}
+        }
 
-	}
+    }
 
 	/**
 	 * <p>
@@ -427,16 +429,14 @@ public class SimpleDbJobStore implements JobStore {
 	public boolean removeJob(SchedulingContext ctxt, String jobName,
 			String groupName) {
 		logDebug("Removing Job: ", groupName, ".", jobName);
-		try {
-			String key = JobWrapper.getJobNameKey(jobName, groupName);
-			amazonSimpleDb.deleteAttributes(new DeleteAttributesRequest(
-					jobDomain, key));
-			return true;
-		} catch (Exception e) {
-			log.error("Could not remove Job: " + groupName + "." + jobName, e);
-			return false;
-		}
-	}
+        String key = JobWrapper.getJobNameKey(jobName, groupName);
+        amazonSimpleDb.deleteAttributes(new DeleteAttributesRequest(
+                jobDomain, key));
+
+        // delete attributes will succeed if the item doesn't exist,
+        // so we can't easily detect the job-didn't-exist return value here
+        return true;
+    }
 
 	/**
 	 * <p>
@@ -508,7 +508,7 @@ public class SimpleDbJobStore implements JobStore {
                     TriggerWrapper.getTriggerNameKey(newTrigger), attributes);
 			amazonSimpleDb.batchPutAttributes(new BatchPutAttributesRequest(
 					triggerDomain, Collections.singletonList(item)));
-		} catch (Exception e) {
+		} catch (IOException e) {
 			log.error("Could not store Trigger: " + newTrigger.getFullName(), e);
 		}
 
@@ -536,18 +536,15 @@ public class SimpleDbJobStore implements JobStore {
 	private boolean removeTrigger(SchedulingContext ctxt, String triggerName,
 			String groupName, boolean removeOrphanedJob) {
 		logDebug("Removing Trigger: ", groupName, ".", triggerName);
-		try {
-			String key = TriggerWrapper.getTriggerNameKey(triggerName,
-					groupName);
-			amazonSimpleDb.deleteAttributes(new DeleteAttributesRequest(
-					triggerDomain, key));
-			return true;
-		} catch (Exception e) {
-			log.error("Could not remove Trigger: " + groupName + "."
-					+ triggerName, e);
-			return false;
-		}
-	}
+        String key = TriggerWrapper.getTriggerNameKey(triggerName,
+                groupName);
+        amazonSimpleDb.deleteAttributes(new DeleteAttributesRequest(
+                triggerDomain, key));
+
+        // delete attributes will succeed if the item doesn't exist,
+        // so we can't easily detect the job-didn't-exist return value here
+        return true;
+    }
 
 	/**
 	 * @see org.quartz.spi.JobStore#replaceTrigger(org.quartz.core.SchedulingContext,
@@ -600,34 +597,51 @@ public class SimpleDbJobStore implements JobStore {
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(jobDomain, key)
 						.withConsistentRead(new Boolean(true)));
-		JobDetail job = null;
 		try {
-			job = jobDetailFromAttributes(result.getAttributes());
-		} catch (Exception e) {
+			return jobDetailFromAttributes(result.getAttributes());
+		} catch (IOException e) {
 			log.error("Could not retrieve Job: " + groupName + "." + jobName, e);
+            return null;
 		}
-		return job;
 	}
 
 	private JobDetail jobDetailFromAttributes(List<Attribute> attributes)
-			throws Exception {
+            throws IOException {
 		if (attributes == null || attributes.size() == 0) {
-			throw new Exception("No attributes");
+			throw new IllegalArgumentException("No attributes");
 		}
 		Map<String, String> map = new HashMap<String, String>();
 		for (Attribute attr : attributes) {
 			map.put(attr.getName(), attr.getValue());
 		}
-		Class<? extends JobDetail> clz = Class.forName(map.get(JOB_CLASS))
-				.asSubclass(JobDetail.class);
-		JobDetail jobDetail = clz.newInstance();
-		jobDetail.setJobClass(Class.forName(map.get(JOB_JOBCLASS)));
-		jobDetail.setName(map.get(JOB_NAME));
-		jobDetail.setGroup(map.get(JOB_GROUP));
-		jobDetail.setJobDataMap(mapper.readValue(map.get(JOB_DATA_MAP),
+        final JobDetail jobDetail;
+        final Class<? extends JobDetail> clz;
+
+            final String jobClassName = map.get(JOB_CLASS);
+            try {
+                clz = Class.forName(jobClassName)
+                        .asSubclass(JobDetail.class);
+            } catch (ClassNotFoundException ex) {
+                throw new IllegalStateException("couldn't load job class " +
+                        "('" + jobClassName + "') as " + JobDetail.class.getName());
+            }
+        try {
+            jobDetail = clz.newInstance();
+            jobDetail.setJobClass(Class.forName(map.get(JOB_JOBCLASS)));
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException("couldn't load job's job class", e);
+        } catch (InstantiationException e) {
+            throw new IllegalStateException("couldn't instantiate job class", e);
+        } catch (IllegalAccessException e) {
+            throw new IllegalStateException("couldn't instantiate job class", e);
+        }
+
+        jobDetail.setName(map.get(JOB_NAME));
+        jobDetail.setGroup(map.get(JOB_GROUP));
+        jobDetail.setJobDataMap(mapper.readValue(map.get(JOB_DATA_MAP),
 				JobDataMap.class));
-		return jobDetail;
-	}
+        return jobDetail;
+    }
 
 	/**
 	 * <p>
@@ -652,16 +666,16 @@ public class SimpleDbJobStore implements JobStore {
 		try {
 			tw = triggerFromAttributes(result.getAttributes());
 			return tw.trigger;
-		} catch (Exception e) {
-			logDebug("Trigger not found: ", triggerName, ".", groupName);
-		}
-		return null;
+		} catch (IOException e) {
+			logDebug("Trigger not found: ", triggerName, ".", groupName, e);
+            return null;
+        }
 	}
 
 	private TriggerWrapper triggerFromAttributes(List<Attribute> attributes)
-			throws Exception {
+            throws IOException {
 		if (attributes == null || attributes.size() == 0) {
-			throw new Exception("No attributes");
+			throw new IllegalArgumentException("No attributes");
 		}
 
 		Map<String, String> map = new HashMap<String, String>();
@@ -669,10 +683,15 @@ public class SimpleDbJobStore implements JobStore {
 			map.put(attr.getName(), attr.getValue());
 		}
 
-		Class<? extends Trigger> clz = Class.forName(map.get(TRIGGER_CLASS))
-				.asSubclass(Trigger.class);
+        Class<? extends Trigger> clz = null;
+        try {
+            clz = Class.forName(map.get(TRIGGER_CLASS))
+                    .asSubclass(Trigger.class);
+        } catch (ClassNotFoundException e) {
+            throw new IllegalStateException("couldn't load trigger class", e);
+        }
 
-		int len = Integer.parseInt(map.get(TRIGGER_JSON_LENGTH));
+        int len = Integer.parseInt(map.get(TRIGGER_JSON_LENGTH));
 		int n = (len - 1) / MAX_ATTR_LENGTH + 1;
 		StringBuffer buf = new StringBuffer();
 		for (int i = 0; i < n; i++) {
@@ -687,11 +706,15 @@ public class SimpleDbJobStore implements JobStore {
 		}
 		trigger.setJobName(map.get(TRIGGER_JOB_NAME));
 		trigger.setJobGroup(map.get(TRIGGER_JOB_GROUP));
-		trigger.setStartTime(dateFormat.parse(map.get(TRIGGER_START_TIME)));
-		if (map.get(TRIGGER_END_TIME) != null) {
-			trigger.setEndTime(dateFormat.parse(map.get(TRIGGER_END_TIME)));
-		}
-		trigger.setPriority(Integer.parseInt(map.get(TRIGGER_PRIORITY)));
+		try {
+            trigger.setStartTime(dateFormat.parse(map.get(TRIGGER_START_TIME)));
+            if (map.get(TRIGGER_END_TIME) != null) {
+                trigger.setEndTime(dateFormat.parse(map.get(TRIGGER_END_TIME)));
+            }
+            trigger.setPriority(Integer.parseInt(map.get(TRIGGER_PRIORITY)));
+        } catch (ParseException e) {
+            throw new IOException(e);
+        }
 
 		TriggerWrapper wrapper = new TriggerWrapper(trigger);
 		if (map.get(TRIGGER_STATE) != null) {
@@ -727,15 +750,17 @@ public class SimpleDbJobStore implements JobStore {
 		logDebug("Finding state of Trigger: ", triggerName, ".", groupName);
 		String key = TriggerWrapper.getTriggerNameKey(triggerName, groupName);
 
-		TriggerWrapper tw = null;
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(triggerDomain, key)
 						.withConsistentRead(new Boolean(true)));
-		try {
+
+        TriggerWrapper tw;
+        try {
 			tw = triggerFromAttributes(result.getAttributes());
-		} catch (Exception e) {
+		} catch (IOException e) {
 			log.error("Error finding state of Trigger: " + triggerName + "."
 					+ groupName, e);
+            return Trigger.STATE_NONE;
 		}
 
 		if (tw == null) {
@@ -834,15 +859,10 @@ public class SimpleDbJobStore implements JobStore {
 	@Override
 	public int getNumberOfJobs(SchedulingContext ctxt) {
 		logDebug("Finding number of jobs");
-		try {
-			SelectResult result = amazonSimpleDb.select(new SelectRequest(query
-					.countJobs()));
-			Item item = result.getItems().get(0);
-			return Integer.parseInt(item.getAttributes().get(0).getValue());
-		} catch (Exception e) {
-			log.error("Could not find number of jobs", e);
-			return -1;
-		}
+        SelectResult result = amazonSimpleDb.select(new SelectRequest(query
+                .countJobs()));
+        Item item = result.getItems().get(0);
+        return Integer.parseInt(item.getAttributes().get(0).getValue());
 	}
 
 	/**
@@ -854,16 +874,11 @@ public class SimpleDbJobStore implements JobStore {
 	@Override
 	public int getNumberOfTriggers(SchedulingContext ctxt) {
 		logDebug("Finding number of triggers");
-		try {
-			SelectResult result = amazonSimpleDb.select(new SelectRequest(query
-					.countTriggers()));
-			Item item = result.getItems().get(0);
-			return Integer.parseInt(item.getAttributes().get(0).getValue());
-		} catch (Exception e) {
-			log.error("Could not find number of triggers", e);
-			return -1;
-		}
-	}
+        SelectResult result = amazonSimpleDb.select(new SelectRequest(query
+                .countTriggers()));
+        Item item = result.getItems().get(0);
+        return Integer.parseInt(item.getAttributes().get(0).getValue());
+    }
 
 	/**
 	 * <p>
@@ -993,11 +1008,13 @@ public class SimpleDbJobStore implements JobStore {
 		int i = 0;
 		for (Item item : items) {
 			try {
+                logDebug("loading trigger for ", item.getName());
 				TriggerWrapper tw = triggerFromAttributes(item.getAttributes());
 				triggers[i++] = tw.trigger;
-			} catch (Exception e) {
-				log.error("Could not create trigger for Item: "
-						+ item.getName());
+			} catch (IOException e) {
+                final String msg = "Could not create trigger for Item: " + item.getName();
+                log.error(msg, e);
+                throw new IllegalStateException(msg, e);
 			}
 		}
 		return triggers;
@@ -1021,8 +1038,8 @@ public class SimpleDbJobStore implements JobStore {
 
 		try {
 			tw = triggerFromAttributes(result.getAttributes());
-		} catch (Exception e) {
-			log.error("Could not create trigger for Item: " + result.toString());
+		} catch (IOException e) {
+			log.error("Could not create trigger for Item: " + result.toString(), e);
 		}
 
 		// does the trigger exist?
@@ -1134,7 +1151,7 @@ public class SimpleDbJobStore implements JobStore {
 
 		try {
 			tw = triggerFromAttributes(result.getAttributes());
-		} catch (Exception e) {
+		} catch (IOException e) {
 			log.error("Could not create trigger for Item: " + result.toString());
 		}
 
@@ -1337,7 +1354,7 @@ public class SimpleDbJobStore implements JobStore {
 					removeTrigger(ctxt, tw.trigger.getName(),
 							tw.trigger.getGroup());
 				}
-			} catch (Exception e) {
+			} catch (IOException e) {
 				log.error("Could not acquire trigger", e);
 			}
 		}
@@ -1365,7 +1382,7 @@ public class SimpleDbJobStore implements JobStore {
 				tw.state = TriggerWrapper.STATE_WAITING;
 				updateState(tw);
 			}
-		} catch (Exception e) {
+		} catch (IOException e) {
 			log.error("Could not release Trigger: " + trigger.getFullName(), e);
 		}
 	}
@@ -1389,8 +1406,8 @@ public class SimpleDbJobStore implements JobStore {
 		TriggerWrapper tw = null;
 		try {
 			tw = triggerFromAttributes(result.getAttributes());
-		} catch (Exception e) {
-			log.error("Could not load Trigger: " + trigger.getFullName());
+		} catch (IOException e) {
+			log.error("Could not load Trigger: " + trigger.getFullName(), e);
 		}
 
 		// was the trigger deleted since being acquired?
@@ -1419,11 +1436,11 @@ public class SimpleDbJobStore implements JobStore {
 			storeTrigger(ctxt, trigger, true);
 			tw.state = TriggerWrapper.STATE_WAITING;
 			updateState(tw);
-		} catch (Exception e) {
-			log.error("Error while firing Trigger: " + trigger.getFullName());
-		}
+		} catch (JobPersistenceException e) {
+            log.error("Error while firing Trigger: " + trigger.getFullName(), e);
+        }
 
-		TriggerFiredBundle bndle = new TriggerFiredBundle(retrieveJob(ctxt,
+        TriggerFiredBundle bndle = new TriggerFiredBundle(retrieveJob(ctxt,
 				trigger.getJobName(), trigger.getJobGroup()), trigger, cal,
 				false, new Date(), trigger.getPreviousFireTime(), prevFireTime,
 				trigger.getNextFireTime());
@@ -1458,9 +1475,9 @@ public class SimpleDbJobStore implements JobStore {
 		try {
 			job = jobDetailFromAttributes(jobresult.getAttributes());
 			if (job.isStateful()) {
-				// TODO: Implement support for stateful jobs
+				throw new IllegalStateException("TODO: can't handle stateful jobs right now"); // TODO
 			}
-		} catch (Exception e) {
+		} catch (IOException e) {
 			log.error(
 					"Could not complete job for Trigger: "
 							+ trigger.getFullName(), e);
@@ -1474,7 +1491,7 @@ public class SimpleDbJobStore implements JobStore {
 
 		try {
 			tw = triggerFromAttributes(result.getAttributes());
-		} catch (Exception e) {
+		} catch (IOException e) {
 			log.error("Could not find Trigger: " + trigger.getFullName(), e);
 		}
 
