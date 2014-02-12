@@ -154,8 +154,7 @@ public class SimpleDbJobStore implements JobStore {
 	private QueryBuilder query;
 	private final ISO8601DateFormat dateFormat = new ISO8601DateFormat();
 
-	protected final Object lock = new Object();
-	protected long misfireThreshold = 5000l;
+    protected long misfireThreshold = 5000l;
 	protected SchedulerSignaler signaler;
 	private static final Log log = LogFactory.getLog(SimpleDbJobStore.class);
 
@@ -317,8 +316,6 @@ public class SimpleDbJobStore implements JobStore {
 	 * The number of milliseconds by which a trigger must have missed its
 	 * next-fire-time, in order for it to be considered "misfired" and thus have
 	 * its misfire instruction applied.
-	 * 
-	 * @param misfireThreshold
 	 */
 	public void setMisfireThreshold(long misfireThreshold) {
 		if (misfireThreshold < 1) {
@@ -386,7 +383,7 @@ public class SimpleDbJobStore implements JobStore {
 			boolean replaceExisting) throws ObjectAlreadyExistsException {
 
 		logDebug("Storing Job: ", newJob.getFullName());
-		ReplaceableItem item = null;
+
 		try {
 			List<ReplaceableAttribute> attributes = new ArrayList<ReplaceableAttribute>();
 			attributes.add(new ReplaceableAttribute(JOB_NAME, newJob.getName(),
@@ -401,7 +398,7 @@ public class SimpleDbJobStore implements JobStore {
 				attributes.add(new ReplaceableAttribute(JOB_DATA_MAP, mapper
 						.writeValueAsString(newJob.getJobDataMap()), true));
 			}
-			item = new ReplaceableItem(JobWrapper.getJobNameKey(newJob),
+            ReplaceableItem item = new ReplaceableItem(JobWrapper.getJobNameKey(newJob),
 					attributes);
 			amazonSimpleDb.batchPutAttributes(new BatchPutAttributesRequest(
                     jobDomain, Collections.singletonList(item)));
@@ -460,7 +457,6 @@ public class SimpleDbJobStore implements JobStore {
 			boolean replaceExisting) throws JobPersistenceException {
 
 		logDebug("Storing Trigger: ", newTrigger.getFullName());
-		ReplaceableItem item = null;
 		try {
 
 			List<ReplaceableAttribute> attributes = new ArrayList<ReplaceableAttribute>();
@@ -504,7 +500,7 @@ public class SimpleDbJobStore implements JobStore {
 						+ String.valueOf(i), json.substring(
 						i * MAX_ATTR_LENGTH, end), true));
 			}
-            item = new ReplaceableItem(
+            ReplaceableItem item = new ReplaceableItem(
                     TriggerWrapper.getTriggerNameKey(newTrigger), attributes);
 			amazonSimpleDb.batchPutAttributes(new BatchPutAttributesRequest(
 					triggerDomain, Collections.singletonList(item)));
@@ -596,7 +592,7 @@ public class SimpleDbJobStore implements JobStore {
 		String key = JobWrapper.getJobNameKey(jobName, groupName);
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(jobDomain, key)
-						.withConsistentRead(new Boolean(true)));
+						.withConsistentRead(Boolean.TRUE));
 		try {
 			return jobDetailFromAttributes(result.getAttributes());
 		} catch (IOException e) {
@@ -661,7 +657,7 @@ public class SimpleDbJobStore implements JobStore {
 		String key = TriggerWrapper.getTriggerNameKey(triggerName, groupName);
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(triggerDomain, key)
-						.withConsistentRead(new Boolean(true)));
+						.withConsistentRead(Boolean.TRUE));
 		TriggerWrapper tw = null;
 		try {
 			tw = triggerFromAttributes(result.getAttributes());
@@ -683,7 +679,7 @@ public class SimpleDbJobStore implements JobStore {
 			map.put(attr.getName(), attr.getValue());
 		}
 
-        Class<? extends Trigger> clz = null;
+        Class<? extends Trigger> clz;
         try {
             clz = Class.forName(map.get(TRIGGER_CLASS))
                     .asSubclass(Trigger.class);
@@ -693,7 +689,7 @@ public class SimpleDbJobStore implements JobStore {
 
         int len = Integer.parseInt(map.get(TRIGGER_JSON_LENGTH));
 		int n = (len - 1) / MAX_ATTR_LENGTH + 1;
-		StringBuffer buf = new StringBuffer();
+		StringBuilder buf = new StringBuilder();
 		for (int i = 0; i < n; i++) {
 			buf.append(map.get(TRIGGER_JSON + String.valueOf(i)));
 		}
@@ -752,7 +748,7 @@ public class SimpleDbJobStore implements JobStore {
 
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(triggerDomain, key)
-						.withConsistentRead(new Boolean(true)));
+						.withConsistentRead(Boolean.TRUE));
 
         TriggerWrapper tw;
         try {
@@ -1033,7 +1029,7 @@ public class SimpleDbJobStore implements JobStore {
 		String key = TriggerWrapper.getTriggerNameKey(triggerName, groupName);
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(triggerDomain, key)
-						.withConsistentRead(new Boolean(true)));
+						.withConsistentRead(Boolean.TRUE));
 		TriggerWrapper tw = null;
 
 		try {
@@ -1079,9 +1075,9 @@ public class SimpleDbJobStore implements JobStore {
 		logDebug("Pausing all triggers of goup: ", groupName);
 		String[] names = getTriggerNames(ctxt, groupName);
 
-		for (int i = 0; i < names.length; i++) {
-			pauseTrigger(ctxt, names[i], groupName);
-		}
+        for (String name : names) {
+            pauseTrigger(ctxt, name, groupName);
+        }
 	}
 
 	/**
@@ -1096,9 +1092,9 @@ public class SimpleDbJobStore implements JobStore {
 			String groupName) {
 		logDebug("Pausing all triggers of Job: ", jobName, ".", groupName);
 		Trigger[] triggers = getTriggersForJob(ctxt, jobName, groupName);
-		for (int j = 0; j < triggers.length; j++) {
-			pauseTrigger(ctxt, triggers[j].getName(), triggers[j].getGroup());
-		}
+        for (Trigger trigger : triggers) {
+            pauseTrigger(ctxt, trigger.getName(), trigger.getGroup());
+        }
 	}
 
 	/**
@@ -1118,13 +1114,13 @@ public class SimpleDbJobStore implements JobStore {
 	public void pauseJobGroup(SchedulingContext ctxt, String groupName) {
 		logDebug("Pausing all jobs of group: ", groupName);
 		String[] jobNames = getJobNames(ctxt, groupName);
-		for (int i = 0; i < jobNames.length; i++) {
-			Trigger[] triggers = getTriggersForJob(ctxt, jobNames[i], groupName);
-			for (int j = 0; j < triggers.length; j++) {
-				pauseTrigger(ctxt, triggers[j].getName(),
-						triggers[j].getGroup());
-			}
-		}
+        for (String jobName : jobNames) {
+            Trigger[] triggers = getTriggersForJob(ctxt, jobName, groupName);
+            for (Trigger trigger : triggers) {
+                pauseTrigger(ctxt, trigger.getName(),
+                        trigger.getGroup());
+            }
+        }
 	}
 
 	/**
@@ -1146,7 +1142,7 @@ public class SimpleDbJobStore implements JobStore {
 
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(triggerDomain, key)
-						.withConsistentRead(new Boolean(true)));
+						.withConsistentRead(Boolean.TRUE));
 		TriggerWrapper tw = null;
 
 		try {
@@ -1185,9 +1181,9 @@ public class SimpleDbJobStore implements JobStore {
 	public void resumeTriggerGroup(SchedulingContext ctxt, String groupName) {
 		logDebug("Resuming all triggers of group: ", groupName);
 		String[] names = getTriggerNames(ctxt, groupName);
-		for (int i = 0; i < names.length; i++) {
-			resumeTrigger(ctxt, names[i], groupName);
-		}
+        for (String name : names) {
+            resumeTrigger(ctxt, name, groupName);
+        }
 	}
 
 	/**
@@ -1208,9 +1204,9 @@ public class SimpleDbJobStore implements JobStore {
 			String groupName) {
 		logDebug("Resuming all triggers for Job: ", jobName, ".", groupName);
 		Trigger[] triggers = getTriggersForJob(ctxt, jobName, groupName);
-		for (int j = 0; j < triggers.length; j++) {
-			resumeTrigger(ctxt, triggers[j].getName(), triggers[j].getGroup());
-		}
+        for (Trigger trigger : triggers) {
+            resumeTrigger(ctxt, trigger.getName(), trigger.getGroup());
+        }
 	}
 
 	/**
@@ -1231,13 +1227,13 @@ public class SimpleDbJobStore implements JobStore {
 		logDebug("Resuming all jobs of group: ", groupName);
 		String[] jobNames = getJobNames(ctxt, groupName);
 
-		for (int i = 0; i < jobNames.length; i++) {
-			Trigger[] triggers = getTriggersForJob(ctxt, jobNames[i], groupName);
-			for (int j = 0; j < triggers.length; j++) {
-				resumeTrigger(ctxt, triggers[j].getName(),
-						triggers[j].getGroup());
-			}
-		}
+        for (String jobName : jobNames) {
+            Trigger[] triggers = getTriggersForJob(ctxt, jobName, groupName);
+            for (Trigger trigger : triggers) {
+                resumeTrigger(ctxt, trigger.getName(),
+                        trigger.getGroup());
+            }
+        }
 	}
 
 	/**
@@ -1258,9 +1254,9 @@ public class SimpleDbJobStore implements JobStore {
 	public void pauseAll(SchedulingContext ctxt) {
 		logDebug("Pausing all triggers");
 		String[] names = getTriggerGroupNames(ctxt);
-		for (int i = 0; i < names.length; i++) {
-			pauseTriggerGroup(ctxt, names[i]);
-		}
+        for (String name : names) {
+            pauseTriggerGroup(ctxt, name);
+        }
 	}
 
 	/**
@@ -1280,9 +1276,9 @@ public class SimpleDbJobStore implements JobStore {
 	public void resumeAll(SchedulingContext ctxt) {
 		logDebug("Resuming all triggers");
 		String[] names = getTriggerGroupNames(ctxt);
-		for (int i = 0; i < names.length; i++) {
-			resumeTriggerGroup(ctxt, names[i]);
-		}
+        for (String name : names) {
+            resumeTriggerGroup(ctxt, name);
+        }
 	}
 
 	protected boolean applyMisfire(TriggerWrapper tw) {
@@ -1374,10 +1370,9 @@ public class SimpleDbJobStore implements JobStore {
 		String key = TriggerWrapper.getTriggerNameKey(trigger);
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(triggerDomain, key)
-						.withConsistentRead(new Boolean(true)));
-		TriggerWrapper tw = null;
+						.withConsistentRead(Boolean.TRUE));
 		try {
-			tw = triggerFromAttributes(result.getAttributes());
+            TriggerWrapper tw = triggerFromAttributes(result.getAttributes());
 			if (tw.state == TriggerWrapper.STATE_ACQUIRED) {
 				tw.state = TriggerWrapper.STATE_WAITING;
 				updateState(tw);
@@ -1402,7 +1397,7 @@ public class SimpleDbJobStore implements JobStore {
 		String key = TriggerWrapper.getTriggerNameKey(trigger);
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(triggerDomain, key)
-						.withConsistentRead(new Boolean(true)));
+						.withConsistentRead(Boolean.TRUE));
 		TriggerWrapper tw = null;
 		try {
 			tw = triggerFromAttributes(result.getAttributes());
@@ -1470,7 +1465,7 @@ public class SimpleDbJobStore implements JobStore {
 				jobDetail.getGroup());
 		GetAttributesResult jobresult = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(jobDomain, jobKey)
-						.withConsistentRead(new Boolean(true)));
+						.withConsistentRead(Boolean.TRUE));
 		JobDetail job = null;
 		try {
 			job = jobDetailFromAttributes(jobresult.getAttributes());
@@ -1486,7 +1481,7 @@ public class SimpleDbJobStore implements JobStore {
 		String triggerKey = TriggerWrapper.getTriggerNameKey(trigger);
 		GetAttributesResult result = amazonSimpleDb
 				.getAttributes(new GetAttributesRequest(triggerDomain,
-						triggerKey).withConsistentRead(new Boolean(true)));
+						triggerKey).withConsistentRead(Boolean.TRUE));
 		TriggerWrapper tw = null;
 
 		try {
@@ -1546,15 +1541,15 @@ public class SimpleDbJobStore implements JobStore {
 		logDebug("Setting state of all triggers of Job: ", jobName, ".",
 				jobGroup);
 		Trigger[] triggers = getTriggersForJob(null, jobName, jobGroup);
-		for (int i = 0; i < triggers.length; i++) {
-			TriggerWrapper tw = new TriggerWrapper(triggers[i]);
-			if (state != TriggerWrapper.STATE_WAITING) {
-				removeTrigger(null, tw.trigger.getName(), tw.trigger.getGroup());
-			} else {
-				tw.state = state;
-				updateState(tw);
-			}
-		}
+        for (Trigger trigger : triggers) {
+            TriggerWrapper tw = new TriggerWrapper(trigger);
+            if (state != TriggerWrapper.STATE_WAITING) {
+                removeTrigger(null, tw.trigger.getName(), tw.trigger.getGroup());
+            } else {
+                tw.state = state;
+                updateState(tw);
+            }
+        }
 	}
 
 	/**
