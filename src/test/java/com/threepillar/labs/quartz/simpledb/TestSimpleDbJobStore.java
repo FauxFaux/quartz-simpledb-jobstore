@@ -73,7 +73,7 @@ public class TestSimpleDbJobStore {
 		this.mapper.getDeserializationConfig().addMixInAnnotations(
 				JobDetail.class, FixJobDetailMixIn.class);
 		this.mapper.getDeserializationConfig().addMixInAnnotations(
-				Trigger.class, FixTriggerMixIn.class);
+				Trigger.class, FixCronTriggerMixInNoReally.class);
 
 		job = new JobDetail();
 		job.setName("testJob");

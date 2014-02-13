@@ -6,7 +6,7 @@ import java.util.TimeZone;
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonProperty;
 
-public abstract class FixTriggerMixIn {
+public abstract class FixCronTriggerMixInNoReally {
 
 	@JsonIgnore
 	public abstract Date getFinalFireTime();

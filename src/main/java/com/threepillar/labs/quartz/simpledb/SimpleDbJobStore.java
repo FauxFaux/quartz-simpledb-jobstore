@@ -19,15 +19,7 @@ package com.threepillar.labs.quartz.simpledb;
 
 import java.io.IOException;
 import java.text.ParseException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.commons.logging.Log;
@@ -178,9 +170,9 @@ public class SimpleDbJobStore implements JobStore {
 		this.mapper.getDeserializationConfig().addMixInAnnotations(
 				JobDetail.class, FixJobDetailMixIn.class);
 		this.mapper.getDeserializationConfig().addMixInAnnotations(
-				CronTrigger.class, FixTriggerMixIn.class);
+				CronTrigger.class, FixCronTriggerMixInNoReally.class);
 		this.mapper.getDeserializationConfig().addMixInAnnotations(
-				SimpleTrigger.class, FixTriggerMixIn.class);
+				SimpleTrigger.class, FixCronTriggerMixInNoReally.class);
 	}
 
 	/*
