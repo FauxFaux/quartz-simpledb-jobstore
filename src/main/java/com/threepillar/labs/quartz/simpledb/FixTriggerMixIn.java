@@ -1,6 +1,7 @@
 package com.threepillar.labs.quartz.simpledb;
 
 import java.util.Date;
+import java.util.TimeZone;
 
 import org.codehaus.jackson.annotate.JsonIgnore;
 import org.codehaus.jackson.annotate.JsonProperty;
@@ -30,4 +31,10 @@ public abstract class FixTriggerMixIn {
 
 	@JsonIgnore
 	public abstract String[] getTriggerListenerNames();
+
+    @JsonIgnore
+    public abstract TimeZone getTimeZone();
+
+    @JsonIgnore
+    public abstract void setTimeZone(TimeZone t);
 }
